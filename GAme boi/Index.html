@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>A Message For You</title>
+  <style>
+    :root { --gb-dark:#0f380f; --gb-mid:#306230; --gb-light:#8bac0f; --gb-pale:#9bbc0f; }
+    body {
+      background:#1a1a1a; display:flex; justify-content:center; align-items:center;
+      height:100vh; margin:0; font-family:'Courier New', monospace; color:var(--gb-dark);
+      overflow:hidden; touch-action:manipulation; user-select:none;
+    }
+    #game-boy {
+      width:90%; max-width:360px; background:var(--gb-light); border:8px solid #333; border-radius:15px;
+      position:relative; padding:20px; box-shadow:0 20px 0 #222;
+    }
+    #scene {
+      height:180px; background:var(--gb-pale); border:4px solid var(--gb-dark);
+      display:flex; justify-content:center; align-items:center; font-size:60px;
+      margin-bottom:20px; position:relative; overflow:hidden;
+    }
+    #scene img { max-width:100%; max-height:100%; object-fit:contain; }
+    #dialogue-box {
+      background:#fff; border:4px solid var(--gb-dark); padding:15px; min-height:100px;
+      position:relative; cursor:pointer;
+    }
+    #dialogue-box.player-turn { background:#e8f4e8; }
+    #text { margin:0; font-size:16px; line-height:1.4; font-weight:bold; text-transform:uppercase; }
+    #cursor { position:absolute; bottom:5px; right:10px; font-size:12px; animation:blink .8s infinite; }
+    @keyframes blink { 50% { opacity:0; } }
+    #choices {
+      display:none; margin-top:10px; gap:10px; flex-direction:column;
+    }
+    .choice-btn {
+      background:var(--gb-dark); color:#fff; padding:10px; border:2px solid #000;
+      font-family:'Courier New', monospace; font-size:14px; font-weight:bold;
+      cursor:pointer; text-transform:uppercase;
+    }
+    .choice-btn:active { background:var(--gb-mid); }
+    #volume-control {
+      position:absolute; top:10px; right:10px; z-index:10;
+    }
+    #volume-btn {
+      background:var(--gb-dark); color:#fff; border:2px solid #000;
+      padding:8px 12px; cursor:pointer; font-size:18px;
+      font-family:'Courier New', monospace;
+    }
+    #volume-btn:active { background:var(--gb-mid); }
+    #volume-slider-container {
+      display:none; position:absolute; right:0; top:40px;
+      background:var(--gb-light); border:2px solid #000; padding:10px;
+    }
+    #volume-slider {
+      width:100px; cursor:pointer;
+    }
+  </style>
+</head>
+<body onclick="nextStep()">
+  <div id="game-boy">
+    <div id="volume-control">
+      <button id="volume-btn" onclick="event.stopPropagation(); toggleMute();">🔊</button>
+      <div id="volume-slider-container">
+        <input type="range" id="volume-slider" min="0" max="100" value="100" onclick="event.stopPropagation();" oninput="event.stopPropagation(); setVolume(this.value);">
+      </div>
+    </div>
+    <div id="scene"><img src="img/cat-meme-wave-emoji.gif" alt="wave"></div>
+    <div id="dialogue-box">
+      <p id="text">OH! HI THERE... (TAP TO READ)</p>
+      <div id="cursor">▼</div>
+      <div id="choices"></div>
+    </div>
+  </div>
+
+  <script>
+    let step = 0;
+    let typing = false;
+    let currentAudio = null;
+    let isMuted = false;
+    let volumeLevel = 1.0;
+    const textEl = document.getElementById('text');
+    const iconEl = document.getElementById('scene');
+    const cursor = document.getElementById('cursor');
+    const choicesEl = document.getElementById('choices');
+    const volumeBtn = document.getElementById('volume-btn');
+    const volumeSliderContainer = document.getElementById('volume-slider-container');
+
+    function toggleMute() {
+      isMuted = !isMuted;
+      volumeBtn.textContent = isMuted ? '🔇' : '🔊';
+      if (currentAudio) {
+        currentAudio.muted = isMuted;
+      }
+    }
+
+    function setVolume(value) {
+      volumeLevel = value / 100;
+      if (currentAudio) {
+        currentAudio.volume = volumeLevel;
+      }
+    }
+
+    volumeBtn.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      volumeSliderContainer.style.display = 
+        volumeSliderContainer.style.display === 'block' ? 'none' : 'block';
+    });
+
+    volumeBtn.addEventListener('mousedown', function(e) {
+      if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+
+    volumeBtn.addEventListener('touchstart', function(e) {
+      e.stopPropagation();
+    });
+
+    volumeBtn.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const touch = e.changedTouches[0];
+      const duration = Date.now() - e.target.touchStartTime;
+      if (duration > 500) {
+        volumeSliderContainer.style.display = 
+          volumeSliderContainer.style.display === 'block' ? 'none' : 'block';
+      }
+    });
+
+    volumeBtn.addEventListener('touchstart', function(e) {
+      e.target.touchStartTime = Date.now();
+    }, {passive: true});
+
+    const story = [
+      { icon: "img/cat-cute-cat.gif", text: "OH! HI THERE. I KNOW I'VE BEEN A BIT QUIET LATELY..." },
+      { icon: "img/the-voices.gif", text: "I HAVEN'T BEEN DOING THAT GREAT. EXAM WEEK WAS ROUGH AND I GOT PRETTY SICK.", audio: "https://www.myinstants.com/media/sounds/gato-sad.mp3" },
+      { icon: "img/cat-smiling.gif", text: "BUT NOW THAT MY PAPERS ARE FINISHED, I CAN ANNOY YOU AGAIN!", audio: "https://www.myinstants.com/media/sounds/evil-cat-laugh.mp3" },
+      { 
+        icon: "img/verycat-cat-eating-chips.gif", 
+        text: "ARE YOU GONNA REDO YOUR REPORT?",
+        audio: "https://www.myinstants.com/media/sounds/eating-chips.mp3",
+        choices: [
+          { 
+            text: "YES", 
+            icon: "img/catsad-sad.gif",
+            response: "OKAY LMK WHEN U WANNA SEND",
+            audio: "https://www.myinstants.com/media/sounds/kot-allo.mp3",
+            next: [
+              { icon: "img/dancing-cat-dance.gif", text: "JUMPA KAT INNOVERSE!" }
+            ]
+          },
+          { 
+            text: "NO", 
+            icon: "img/aww-aww-cute.gif",
+            response: "OKAY I WILL TOO",
+            next: [
+              { icon: "img/dancing-cat-dance.gif", text: "JUMPA KAT INNOVERSE!" }
+            ]
+          }
+        ]
+      },
+      
+    ];
+
+    let currentPath = story;
+
+    function nextStep() {
+      if (choicesEl.style.display === 'flex') return;
+      
+      if (typing) {
+        if (window.typeInterval) {
+          clearInterval(window.typeInterval);
+          textEl.textContent = window.currentText;
+          typing = false;
+          if (window.currentCallback) window.currentCallback();
+        }
+        return;
+      }
+      
+      if (step < currentPath.length) {
+        const current = currentPath[step];
+        const icon = current.icon;
+        if (icon.includes('.png') || icon.includes('.jpg') || icon.includes('.gif')) {
+          iconEl.innerHTML = `<img src="${icon}" alt="scene">`;
+        } else {
+          iconEl.textContent = icon;
+        }
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+        }
+        if (current.audio) {
+          currentAudio = new Audio(current.audio);
+          currentAudio.volume = volumeLevel;
+          currentAudio.muted = isMuted;
+          currentAudio.play().catch(e => console.log('Audio play failed:', e));
+        }
+        typeWriter(current.text, () => {
+          if (current.choices) {
+            showChoices(current.choices);
+          }
+        });
+        step++;
+      }
+    }
+
+    function showChoices(choices) {
+      cursor.style.display = 'none';
+      document.getElementById('dialogue-box').classList.add('player-turn');
+      choicesEl.innerHTML = '';
+      choices.forEach((choice, index) => {
+        const button = document.createElement('button');
+        button.className = 'choice-btn';
+        button.textContent = choice.text;
+        button.onclick = (e) => {
+          e.stopPropagation();
+          handleChoice(choice);
+        };
+        choicesEl.appendChild(button);
+      });
+      choicesEl.style.display = 'flex';
+    }
+
+    function handleChoice(choice) {
+      document.getElementById('dialogue-box').classList.remove('player-turn');
+      choicesEl.style.display = 'none';
+      cursor.style.display = 'block';
+      
+      if (choice.icon) {
+        if (choice.icon.includes('.png') || choice.icon.includes('.jpg') || choice.icon.includes('.gif')) {
+          iconEl.innerHTML = `<img src="${choice.icon}" alt="scene">`;
+        } else {
+          iconEl.textContent = choice.icon;
+        }
+      }
+      
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+      }
+      if (choice.audio) {
+        currentAudio = new Audio(choice.audio);
+        currentAudio.volume = volumeLevel;
+        currentAudio.muted = isMuted;
+        currentAudio.play().catch(e => console.log('Audio play failed:', e));
+      }
+      
+      typeWriter(choice.response, () => {
+        if (choice.next) {
+          currentPath = choice.next;
+          step = 0;
+        }
+      });
+    }
+
+    function typeWriter(txt, callback) {
+      typing = true;
+      let i = 0;
+      textEl.textContent = "";
+      if (window.typeInterval) clearInterval(window.typeInterval);
+
+      window.currentText = txt;
+      window.currentCallback = callback;
+
+      window.typeInterval = setInterval(() => {
+        textEl.textContent += txt.charAt(i);
+        i++;
+        if (i >= txt.length) {
+          clearInterval(window.typeInterval);
+          typing = false;
+          if (callback) callback();
+        }
+      }, 40);
+    }
+  </script>
+</body>
+</html>
